@@ -1,6 +1,8 @@
+import os
+import xml.etree.ElementTree as ET
+from dotenv import load_dotenv
 import requests
 from falkordb import FalkorDB
-import xml.etree.ElementTree as ET
 
 def parse_odata_schema(schema):
     """
@@ -46,12 +48,18 @@ def main():
     This function calls an OData service, parses the schema, and generates Cypher queries.
     """
 
+    # load environment variables
+    load_dotenv()
+    odata_url = os.getenv("ODATA_URL")
+    odata_user = os.getenv("ODATA_USER")
+    odata_password = os.getenv("ODATA_PASSWORD")
+
     # Connect to FalkorDB
     db = FalkorDB(host='localhost', port=6379)
     graph = db.select_graph('priority')
 
     # Call the OData service pass user name and password
-    response = requests.get('https://demoen.softsolutions.co.il/odata/Priority/tabula.ini/demo/$metadata', auth=('api', '12345'))
+    response = requests.get(odata_url, auth=(odata_user, odata_password))
 
     # Parse the OData schema
     entities, relationships = parse_odata_schema(response.text)
@@ -62,7 +70,6 @@ def main():
     # Print the Cypher queries
     for query in cypher_queries:
         print(query)
-
 
 if __name__ == "__main__":
     main()
