@@ -12,7 +12,16 @@ def parse_odata_schema(schema):
     relationships = []
 
     root = ET.fromstring(schema)
-    for entity_type in root.findall(".//EntityType"):
+
+    # Define namespaces
+    namespaces = {
+        'edmx': "http://docs.oasis-open.org/odata/ns/edmx",
+        'edm': "http://docs.oasis-open.org/odata/ns/edm"
+    }
+
+    schema_element = root.find(".//edmx:DataServices/edm:Schema", namespaces)
+    entity_types = schema_element.findall("edm:EntityType", namespaces)
+    for entity_type in entity_types:
         entity_name = entity_type.get("Name")
         entities[entity_name] = {
             "properties": [prop.get("Name") for prop in entity_type.findall(".//Property")],
@@ -69,7 +78,7 @@ def main():
 
     # Print the Cypher queries
     for query in cypher_queries:
-        print(query)
+        graph.query(query)
 
 if __name__ == "__main__":
     main()
