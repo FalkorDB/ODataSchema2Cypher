@@ -1,4 +1,5 @@
 import os
+import re
 import xml.etree.ElementTree as ET
 from dotenv import load_dotenv
 import requests
@@ -9,7 +10,7 @@ def parse_odata_schema(schema):
     This function parses the OData schema and returns entities and relationships.
     """
     entities = {}
-    relationships = []
+    relationships = {}
 
     root = ET.fromstring(schema)
 
@@ -23,14 +24,13 @@ def parse_odata_schema(schema):
     entity_types = schema_element.findall("edm:EntityType", namespaces)
     for entity_type in entity_types:
         entity_name = entity_type.get("Name")
-        entities[entity_name] = {
-            "properties": [prop.get("Name") for prop in entity_type.findall(".//Property")],
-            "navigation_properties": [nav.get("Name") for nav in entity_type.findall(".//NavigationProperty")]
-        }
+        entities[entity_name] = list(entity_type.findall("edm:Property", namespaces))
 
-    for entity_name, entity in entities.items():
-        for nav_prop in entity["navigation_properties"]:
-            relationships.append((entity_name, nav_prop))
+        for rel in entity_type.findall("edm:NavigationProperty", namespaces):
+            relationships[rel.get("Name")] = {
+                "from": entity_name,
+                "to": re.findall("Priority.OData.(\\w+)\\b", rel.get("Type"))[0]
+            }
 
     return entities, relationships
 
@@ -38,19 +38,20 @@ def generate_cypher_queries(entities, relationships):
     """
     This function generates Cypher queries for entities and relationships.
     """
-    queries = []
+    entities_queries = []
+    relationships_queries = []
 
-    for entity_name, entity in entities.items():
+    for entity_name, props in entities.items():
         query = f"CREATE (n:{entity_name} {{"
-        query += ", ".join([f"{prop}: ${{prop}}" for prop in entity["properties"]])
+        query += ", ".join([f"{prop.get("Name")}: '{prop.get("Type")}'" for prop in props])
         query += "})"
-        queries.append(query)
+        entities_queries.append(query)
 
-    for relationship in relationships:
-        query = f"MATCH (a:{relationship[0]}), (b:{relationship[1]}) CREATE (a)-[:RELATED_TO]->(b)"
-        queries.append(query)
+    for relationship_name, relationship in relationships.items():
+        query = f"MATCH (a:{relationship["from"]}), (b:{relationship["to"]}) CREATE (a)-[:{relationship_name}]->(b)"
+        relationships_queries.append(query)
 
-    return queries
+    return entities_queries, relationships_queries
 
 def main():
     """
@@ -74,11 +75,16 @@ def main():
     entities, relationships = parse_odata_schema(response.text)
 
     # Generate Cypher queries
-    cypher_queries = generate_cypher_queries(entities, relationships)
+    entities_queries, relationships_queries = generate_cypher_queries(entities, relationships)
 
-    # Print the Cypher queries
-    for query in cypher_queries:
-        graph.query(query)
+    # Run the Create entities Cypher queries
+    for query in entities_queries:
+        res = graph.query(query)
+
+    # Run the Create relationships Cypher queries
+    for query in relationships_queries:
+        res = graph.query(query)
+        assert(res.relationships_created == 1)
 
 if __name__ == "__main__":
     main()
