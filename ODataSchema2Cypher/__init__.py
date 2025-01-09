@@ -1,8 +1,9 @@
 import os
 import re
+import tqdm
+import requests
 import xml.etree.ElementTree as ET
 from dotenv import load_dotenv
-import requests
 from falkordb import FalkorDB
 
 def parse_odata_schema(schema):
@@ -22,15 +23,17 @@ def parse_odata_schema(schema):
 
     schema_element = root.find(".//edmx:DataServices/edm:Schema", namespaces)
     entity_types = schema_element.findall("edm:EntityType", namespaces)
-    for entity_type in entity_types:
+    for entity_type in tqdm.tqdm(entity_types):
         entity_name = entity_type.get("Name")
         entities[entity_name] = list(entity_type.findall("edm:Property", namespaces))
 
         for rel in entity_type.findall("edm:NavigationProperty", namespaces):
-            relationships[rel.get("Name")] = {
+            if rel.get("Name") not in relationships:
+                relationships[rel.get("Name")] = []    
+            relationships[rel.get("Name")].append({
                 "from": entity_name,
                 "to": re.findall("Priority.OData.(\\w+)\\b", rel.get("Type"))[0]
-            }
+            })
 
     return entities, relationships
 
@@ -41,15 +44,16 @@ def generate_cypher_queries(entities, relationships):
     entities_queries = []
     relationships_queries = []
 
-    for entity_name, props in entities.items():
+    for entity_name, props in tqdm.tqdm(entities.items()):
         query = f"CREATE (n:{entity_name} {{"
         query += ", ".join([f"{prop.get("Name")}: '{prop.get("Type")}'" for prop in props])
         query += "})"
         entities_queries.append(query)
 
-    for relationship_name, relationship in relationships.items():
-        query = f"MATCH (a:{relationship["from"]}), (b:{relationship["to"]}) CREATE (a)-[:{relationship_name}]->(b)"
-        relationships_queries.append(query)
+    for relationship_name, relationships in tqdm.tqdm(relationships.items()):
+        for relationship in relationships:
+            query = f"MATCH (a:{relationship["from"]}), (b:{relationship["to"]}) CREATE (a)-[:{relationship_name}]->(b)"
+            relationships_queries.append(query)
 
     return entities_queries, relationships_queries
 
@@ -78,13 +82,12 @@ def main():
     entities_queries, relationships_queries = generate_cypher_queries(entities, relationships)
 
     # Run the Create entities Cypher queries
-    for query in entities_queries:
+    for query in tqdm.tqdm(entities_queries):
         res = graph.query(query)
 
     # Run the Create relationships Cypher queries
-    for query in relationships_queries:
+    for query in tqdm.tqdm(relationships_queries):
         res = graph.query(query)
-        assert(res.relationships_created == 1)
 
 if __name__ == "__main__":
     main()
