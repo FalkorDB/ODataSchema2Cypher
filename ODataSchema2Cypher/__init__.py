@@ -23,7 +23,7 @@ def parse_odata_schema(schema):
 
     schema_element = root.find(".//edmx:DataServices/edm:Schema", namespaces)
     entity_types = schema_element.findall("edm:EntityType", namespaces)
-    for entity_type in tqdm.tqdm(entity_types):
+    for entity_type in tqdm.tqdm(entity_types, "Parsing OData schema"):
         entity_name = entity_type.get("Name")
         entities[entity_name] = list(entity_type.findall("edm:Property", namespaces))
 
@@ -44,13 +44,13 @@ def generate_cypher_queries(entities, relationships):
     entities_queries = []
     relationships_queries = []
 
-    for entity_name, props in tqdm.tqdm(entities.items()):
+    for entity_name, props in tqdm.tqdm(entities.items(), "Generating create entity Cypher queries"):
         query = f"CREATE (n:{entity_name} {{"
         query += ", ".join([f"{prop.get("Name")}: '{prop.get("Type")}'" for prop in props])
         query += "})"
         entities_queries.append(query)
 
-    for relationship_name, relationships in tqdm.tqdm(relationships.items()):
+    for relationship_name, relationships in tqdm.tqdm(relationships.items(), "Generating create relationship Cypher queries"):
         for relationship in relationships:
             query = f"MATCH (a:{relationship["from"]}), (b:{relationship["to"]}) CREATE (a)-[:{relationship_name}]->(b)"
             relationships_queries.append(query)
@@ -82,11 +82,11 @@ def main():
     entities_queries, relationships_queries = generate_cypher_queries(entities, relationships)
 
     # Run the Create entities Cypher queries
-    for query in tqdm.tqdm(entities_queries):
+    for query in tqdm.tqdm(entities_queries, "Creating entities"):
         res = graph.query(query)
 
     # Run the Create relationships Cypher queries
-    for query in tqdm.tqdm(relationships_queries):
+    for query in tqdm.tqdm(relationships_queries, "Creating relationships"):
         res = graph.query(query)
 
 if __name__ == "__main__":
