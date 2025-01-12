@@ -25,7 +25,10 @@ def parse_odata_schema(schema):
     entity_types = schema_element.findall("edm:EntityType", namespaces)
     for entity_type in tqdm.tqdm(entity_types, "Parsing OData schema"):
         entity_name = entity_type.get("Name")
-        entities[entity_name] = list(entity_type.findall("edm:Property", namespaces))
+        entities[entity_name] = {prop.get("Name"): prop.get("Type") for prop in entity_type.findall("edm:Property", namespaces)}
+        description = entity_type.findall("edm:Annotation", namespaces)
+        if len(description) == 1:
+            entities[entity_name]["description"] = description[0].get("String").replace("'", "\\'")
 
         for rel in entity_type.findall("edm:NavigationProperty", namespaces):
             if rel.get("Name") not in relationships:
@@ -46,7 +49,7 @@ def generate_cypher_queries(entities, relationships):
 
     for entity_name, props in tqdm.tqdm(entities.items(), "Generating create entity Cypher queries"):
         query = f"CREATE (n:{entity_name} {{"
-        query += ", ".join([f"{prop.get("Name")}: '{prop.get("Type")}'" for prop in props])
+        query += ", ".join([f"{key}: '{value}'" for key, value in props.items()])
         query += "})"
         entities_queries.append(query)
 
@@ -73,9 +76,11 @@ def main():
     graph = db.select_graph('priority')
 
     # Call the OData service pass user name and password
+    print("Downloading OData schema...")
     response = requests.get(odata_url, auth=(odata_user, odata_password))
 
     # Parse the OData schema
+    print("Parsing OData schema...")
     entities, relationships = parse_odata_schema(response.text)
 
     # Generate Cypher queries
