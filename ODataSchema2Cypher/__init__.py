@@ -80,7 +80,6 @@ def main():
     response = requests.get(odata_url, auth=(odata_user, odata_password))
 
     # Parse the OData schema
-    print("Parsing OData schema...")
     entities, relationships = parse_odata_schema(response.text)
 
     # Generate Cypher queries
